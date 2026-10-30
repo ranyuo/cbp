@@ -243,7 +243,12 @@ const IMG_CACHE = {};
 function img(src, fallback = 'ph:campus:1') {
   if (!src) src = fallback;
   if (typeof src !== 'string') return '';
-  if (!src.startsWith('ph:')) return src;
+  if (!src.startsWith('ph:')) {
+    // Las rutas se conservan porque también están guardadas en instalaciones existentes.
+    // Renueva solo los retratos locales; no altera fotos subidas ni recursos externos.
+    if (/^\/assets\/cbp\/(?:docente-|director-general-)[^/?#]+\.jpg(?:\.webp)?$/.test(src)) return src + '?v=retratos-20261030';
+    return src;
+  }
   if (IMG_CACHE[src]) return IMG_CACHE[src];
   const [, t, ...rest] = src.split(':'); const s = rest.join(':');
   let out;

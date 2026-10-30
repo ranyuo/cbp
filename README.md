@@ -37,6 +37,14 @@ Sube `portal-private/` y `public_html/` encima de las carpetas actuales y acepta
 - **Contenido inicial** que carga la instalación: `portal-private/data/portal.json`.
 - **Imágenes y documentos:** `public_html/assets/cbp/`. Las imágenes grandes tienen una copia `.webp` que el servidor entrega a los navegadores compatibles.
 
+### Actualizar los retratos institucionales
+
+Los retratos retocados usan formato vertical **4:5 (720 × 900)**, con fondo de biblioteca y sin degradado oscuro sobre la fotografía. Se conservan las rutas existentes para que también funcionen con los datos de instalaciones ya creadas; no es necesario reinstalar ni importar de nuevo la base de datos.
+
+Al publicar esta actualización, sube los archivos `docente-*.jpg`, `director-general-*.jpg` y sus versiones `.jpg.webp`, además de `public_html/assets/app/portal.css` y `portal-2.js`. Mantén cada JPG y su WebP sincronizados: Apache puede servir el WebP aunque la URL termine en JPG. El código añade una versión a las URL de estos retratos para renovar la caché del navegador.
+
+Los retratos son retoques digitales de las fotografías existentes, no nuevas tomas. La fotografía de Ricardo Chacaliaza se conserva sin retocar: el rostro original es demasiado pequeño y tiene líneas de escaneo que impiden recuperar sus rasgos con fidelidad. Para mejorarla hace falta una fotografía de origen de mayor calidad. Los originales anteriores siguen disponibles en el historial de Git.
+
 El sistema es una copia del portal de Nasca (`ranyuo/claudenasca`, commit `bf8264c`) adaptada con la información pública de https://www.cbp.edu.pe/, consultada el 30 de octubre de 2026. Las imágenes y los documentos se sirven desde `public_html/assets/cbp/`, no desde la web original. La versión anterior de este repositorio está en la rama `respaldo-main-2026-10-30`.
 
 ## Datos que debe confirmar la institución
