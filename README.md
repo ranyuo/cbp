@@ -1,45 +1,48 @@
-# Portal IESTP Pisco — PHP y MySQL para Hostinger
+# Portal IESTP “Catalina Buendía de Pecho” — Ica
 
-La rama `main` contiene la versión unificada con las correcciones de la revisión profunda, el cargo de Mesa de Partes y el Libro de Reclamaciones.
+Archivos para publicar en Hostinger:
 
-[Descargar la versión completa de main](https://github.com/ranyuo/portal/archive/refs/heads/main.zip)
+- `portal-private/`: código PHP, vistas y datos. Va **fuera** de `public_html`, al mismo nivel.
+- `public_html/`: raíz pública del dominio, con la página, la intranet, el CSS, el JavaScript y las imágenes.
 
-## Tecnologías y carpetas
+El archivo `portal-private/config.php` (datos de la base de datos y clave de instalación) **no se guarda en GitHub**: el repositorio es público. Se crea a partir de `portal-private/config.example.php`.
 
-PHP sin Laravel, MySQL, HTML, CSS y JavaScript. No requiere Composer, Node ni compilar archivos para desplegar en Hostinger. Las bibliotecas de PDF, Excel y QR están incluidas.
+## Instalación nueva
 
-- `public_html/`: archivos públicos del portal.
-- `portal-private/`: lógica PHP, plantillas, configuración y acceso a MySQL. Debe quedar al mismo nivel que public_html.
-- `tests/`: pruebas de desarrollo; no subir a Hostinger.
-- `evidencias/`: PDF e imágenes de pruebas con datos sintéticos; no subir a Hostinger ni presentarlos como documentos oficiales.
+1. **Base de datos:** en hPanel › *Bases de datos › Bases de datos MySQL*, crea una base y un usuario con su contraseña. Anota los tres datos.
+2. **Descarga el código:** en GitHub, *Code › Download ZIP*.
+3. **Sube y extrae:** con el *Administrador de archivos*, sube el ZIP a la carpeta del dominio (la que contiene `public_html`) y extráelo. GitHub mete todo en una carpeta `cbp-main/`; mueve `portal-private/` y `public_html/` desde ahí a la carpeta del dominio y reemplaza el `public_html` vacío.
+4. **Configura:** copia `portal-private/config.example.php` como `portal-private/config.php` y completa:
+   - `db_name`, `db_user` y `db_password`;
+   - `install_key`: una clave privada aleatoria de 32 caracteres o más. Guárdala.
+5. **Instala:** abre `https://tu-dominio/install.php`, escribe la `install_key` y crea la cuenta del administrador principal.
+6. **Borra** `public_html/install.php`. Después de instalar ya no sirve; si lo vuelves a abrir responde "La aplicación ya está instalada".
+7. **Permisos:** `public_html/assets/cache/` debe tener permisos **755**.
+8. **Comprueba:**
+   - Abre el sitio y entra a la intranet con la cuenta creada.
+   - Revisa *Configuración*: datos institucionales y logo.
+   - En *Mesa de partes › Áreas receptoras › Editar áreas*, carga las áreas reales con sus correos.
+   - En *Usuarios y roles*, crea las cuentas del personal.
 
-## Actualizar tu instalación existente
+**Opcional, respaldos automáticos:** en hPanel › *Avanzado › Trabajos cron*, crea una tarea diaria con `php /home/<usuario>/domains/<dominio>/portal-private/cron.php`. Luego actívala en la intranet, en *Copias de seguridad*.
 
-1. Guarda una copia de archivos y base de datos en hPanel.
-2. Descarga el ZIP y sube el contenido de portal-private a la carpeta privada existente. **Conserva config.php y backups**; tu configuración privada no está incluida en este repositorio.
-3. Sube el contenido de public_html al public_html del dominio, incluidos assets/vendor y los archivos ocultos. No crees public_html/public_html.
-4. Abre https://region.aplicacion.io/actualizar.php y ejecuta la actualización con tu install_key. Este paso completa códigos de verificación de reclamos anteriores sin cambiar sus números de seguimiento, usuarios o contraseñas.
-5. Limpia la caché y comprueba el portal desde una ventana privada. Vuelve a descargar los cargos y constancias para ver sus cambios.
-6. Al finalizar elimina actualizar.php, recuperar.php e install.php del directorio público. No reinstales ni importes schema.sql sobre tu base existente.
+## Actualizar una instalación existente
 
-[Instrucciones completas](INSTRUCCIONES.md) · [Corrección del Libro de Reclamaciones](CORRECCION-RECLAMOS.md) · [Corrección del cargo de Mesa de Partes](CORRECCION-CARGO.md)
+Sube `portal-private/` y `public_html/` encima de las carpetas actuales y acepta **sobrescribir**. **No borres las carpetas antes:** así se conservan `config.php`, `backups/` e `install.lock`. Después, borra `public_html/install.php`.
 
-## Correcciones incluidas
+## Dónde se edita
 
-- Cargos nuevos de Mesa de Partes con código aleatorio de 16 caracteres; los anteriores conservan su código completo y ajustan el texto antes del sello.
-- Reclamos y quejas con verificación persistente de 16 caracteres y constancia/hoja PDF con QR de seguimiento.
-- Consulta de reclamos por documento completo o verificación; validaciones claras y compatibilidad con referencias anteriores.
-- Actualización de reclamos anteriores sin cambiar sus números RCL ni su contenido.
-- Correcciones de guardado, sesiones, permisos, versiones, documentos, publicación y formularios de la revisión profunda.
+- **CSS y JavaScript del portal:** `public_html/assets/app/` (`portal.css` y `portal-1.js` a `portal-4.js`).
+- **Armazón de la página:** `portal-private/views/portal.php`.
+- **Contenido inicial** que carga la instalación: `portal-private/data/portal.json`.
+- **Imágenes y documentos:** `public_html/assets/cbp/`. Las imágenes grandes tienen una copia `.webp` que el servidor entrega a los navegadores compatibles.
 
-## Pruebas y evidencias
+El sistema es una copia del portal de Nasca (`ranyuo/claudenasca`, commit `bf8264c`) adaptada con la información pública de https://www.cbp.edu.pe/, consultada el 30 de octubre de 2026. Las imágenes y los documentos se sirven desde `public_html/assets/cbp/`, no desde la web original. La versión anterior de este repositorio está en la rama `respaldo-main-2026-10-30`.
 
-[Revisión profunda por módulo](REVISION-PROFUNDA.md) · [Verificación general](VERIFICACION.md) · [Control de calidad](CONTROL-CALIDAD.md)
+## Datos que debe confirmar la institución
 
-[PDF y consulta del Libro de Reclamaciones](evidencias/reclamos/README.md) · [PDF del cargo con ambas longitudes de código](evidencias/README.md)
-
-Las pruebas se realizaron en PHP/MySQL y Chromium locales. Los QR del Libro fueron decodificados con un lector independiente y su enlace abrió el seguimiento en otra sesión. La aplicación de estos cambios en Hostinger requiere la subida y la actualización indicadas arriba; publicar en GitHub no modifica el hosting.
-
-El correo saliente y la recuperación por correo continúan pendientes por indicación del propietario. Los mensajes y respuestas se guardan en el portal.
-
-La mejora de **Usuarios y roles** incluye edición de permisos por perfil, filtros y control de sesiones. Consulte [MEJORA-USUARIOS-ROLES.md](MEJORA-USUARIOS-ROLES.md) para actualizar Hostinger y conocer el alcance de los permisos editables.
+- RUC y horario de atención de oficinas.
+- Estadísticas de ingresantes, matriculados y egresados (la web original no publica las cifras).
+- Resultados de admisión 2026 (los enlaces de la web original no funcionan).
+- Plan de estudios de Asistencia Administrativa (la web publica el itinerario de Secretariado Ejecutivo).
+- Correos de las áreas receptoras de Mesa de partes (se cargó el correo institucional).

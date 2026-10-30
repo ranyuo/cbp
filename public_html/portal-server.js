@@ -2,6 +2,8 @@
 function portalURL(url) { return url.startsWith('/api/') ? '/index.php?route=' + encodeURIComponent(url.slice(1)) : url; }
 const portalBootstrap=window.PORTAL_BOOTSTRAP;
 for(const [key,value] of Object.entries(portalBootstrap.roles||{}))if(ROLES[key])Object.assign(ROLES[key],value);
+// Personal con área asignada (no Atención ni Dirección): bandeja de Mesa de partes con los expedientes derivados a su área.
+{const u=portalBootstrap.user;if(u&&u.area&&!['admin','atencion','directivo'].includes(u.rol)&&ROLES[u.rol]&&!ROLES[u.rol].mods.includes('expedientes'))ROLES[u.rol].mods=[...ROLES[u.rol].mods,'expedientes'];}
 let portalRevision=portalBootstrap.revision;
 let portalBaseline=structuredClone(portalBootstrap.data);
 const portalPasswords=new Map();
@@ -61,7 +63,10 @@ function portalNormalizeAutomaticChanges(){
   const academicRole=IX_ROLE[role];const permissions=portalBaseline.academico.perms[academicRole]||{};
   const modules={estudiantes:'alumnos',sesiones:'horarios',publicados:'horarios',certs:'certificados',notas:'certificados',titulos:'titulos',empresas:'bolsa',ofertas:'bolsa',postulaciones:'bolsa',perfilesLab:'bolsa',perfilesDoc:'docentes',uds:'config',ambientes:'config',modulos:'config',areas:'mesa',tramites:'mesa',cfg:'config',perms:'usuarios',docs:'certificados',seq:'certificados'};
   const own=role==='docente'?['perfilesDoc']:['estudiante','egresado'].includes(role)?['estudiantes','perfilesLab','postulaciones','docs']:role==='empresa'?['empresas','ofertas','postulaciones']:[];
-  for(const [key,module]of Object.entries(modules))if(!own.includes(key)&&(permissions[module]||0)<2&&key in portalBaseline.academico)DB.academico[key]=structuredClone(portalBaseline.academico[key]);
+  // Catálogos que solo cambian por formulario: si el rol no tiene permiso, se avisa en vez de descartar en silencio.
+  const denied=[];const CATALOGS={uds:'unidades didácticas',ambientes:'ambientes',modulos:'módulos formativos',areas:'áreas receptoras',tramites:'tipos de trámite'};
+  for(const [key,module]of Object.entries(modules))if(!own.includes(key)&&(permissions[module]||0)<2&&key in portalBaseline.academico){if(CATALOGS[key]&&JSON.stringify(DB.academico[key])!==JSON.stringify(portalBaseline.academico[key]))denied.push(CATALOGS[key]);DB.academico[key]=structuredClone(portalBaseline.academico[key]);}
+  if(denied.length)throw new Error('Tu rol no tiene permiso para modificar: '+denied.join(', ')+'. No se guardó el cambio.');
   if(role!=='secretaria')DB.personas=portalBaseline.personas.map(person=>role==='docente'&&person.id===currentUser().personaId?(DB.personas.find(p=>p.id===person.id)||person):structuredClone(person));
   // Los catálogos sincronizados son de lectura; las ediciones autorizadas se realizan en sus módulos.
   for(const key of ['programas','docentes','progMap'])DB.academico[key]=structuredClone(portalBaseline.academico[key]);
@@ -99,7 +104,9 @@ saveDB=function(){
     const patch=portalPatch(portalBaseline,DB);if(!patch.length&&!accounts.length)return true;
     const result=portalRequest('PUT','/api/portal',{patch,revision:portalRevision,accounts});
     portalRevision=result.revision;
-    if(result.normalized){result.normalized.usuarios=result.users||DB.usuarios;portalMerge(DB,result.normalized);}
+    if(result.normalized){result.normalized.usuarios=result.users||DB.usuarios;portalMerge(DB,result.normalized);
+      // Los formularios que enviaron ciudadanos mientras esta sesión estaba abierta llegan con la respuesta: ya existen en el servidor y no deben reenviarse.
+      for(const type of ['mensajes','reclamos','expedientes','suscriptores'])for(const record of DB[type]||[])portalKnown.add(type+':'+record.id);}
     portalBootstrap.user=result.user;portalPasswords.clear();portalBaseline=structuredClone(DB);return true;
   }catch(error){if(ADM.work&&ADM.workKey&&SPECS[ADM.workKey]){const col=SPECS[ADM.workKey].coll;DB[col]=DB[col].map(r=>r===ADM.work?structuredClone(r):r);}portalMerge(DB,structuredClone(portalBaseline));toast(error.message,'err');return false;}
 };
@@ -116,7 +123,8 @@ bindLogin=function(){portalOriginalLogin();const form=document.querySelector('[d
 const portalUserFields=SPECS.usuarios.fields;
 SPECS.usuarios.fields=function(work){const fields=portalUserFields(work);for(const f of fields)if(f.n==='pass1')f.hint='Mínimo 12 caracteres. La contraseña se protege con password_hash en PHP.';
   fields.push({n:'correo',l:'Correo electrónico',t:'email'});
-  fields.push({n:'personaId',l:'Persona del docente (para su CV)',t:'select',opts:()=>DB.personas.map(p=>[p.id,fullName(p)])});return fields;};
+  fields.push({n:'personaId',l:'Persona del docente (para su CV)',t:'select',opts:()=>DB.personas.map(p=>[p.id,fullName(p)])});
+  fields.push({n:'area',l:'Área de Mesa de partes (bandeja)',t:'select',opts:()=>(typeof IX!=='undefined'&&IX.areasFull?IX.areasFull():[]).filter(a=>a.activo&&a.cod!=='MP').map(a=>[a.cod,a.nombre]),hint:'El personal (salvo Atención y Dirección) verá y atenderá los expedientes derivados a esta área.'});return fields;};
 const portalUserValidate=SPECS.usuarios.validate;
 SPECS.usuarios.validate=function(work){const errors=portalUserValidate(work);delete errors.pass1;if(work.pass1||!work.has_password){if([...String(work.pass1||'')].length<12||new TextEncoder().encode(work.pass1||'').length>72)errors.pass1='La contraseña necesita al menos 12 caracteres y máximo 72 bytes.';if(work.pass1!==work.pass2)errors.pass2='Las contraseñas no coinciden.';}return errors;};
 SPECS.usuarios.afterSave=function(work){if(work.pass1)portalPasswords.set(work.id,work.pass1);delete work.pass1;delete work.pass2;};
@@ -127,16 +135,19 @@ IXHOST.defaultPermissions=function(){return portalBootstrap.data.academico.perms
 IXHOST.registerCompany=function(values){return portalRequest('POST','/api/empresas',{...values,password:values.pass});};
 async function portalUpload(file){
   const body=new FormData();body.append('file',file);if(!currentUser()){const purpose=document.querySelector('#cap-mpv,#cap-mp')?'expedientes':'reclamos';body.append('purpose',purpose);body.append('proof',JSON.stringify(portalProofs[purpose]||{}));}
-  const response=await fetch(portalURL('/api/archivos'),{method:'POST',headers:{'Accept':'application/json','X-CSRF-TOKEN':portalBootstrap.csrf},body});const data=await response.json();
+  const response=await fetch(portalURL('/api/archivos'),{method:'POST',headers:{'Accept':'application/json','X-CSRF-TOKEN':portalBootstrap.csrf},body});let data;
+  try{data=await response.json();}catch{throw new Error('No se pudo subir el archivo. El servidor no devolvió una respuesta válida.');}
   if(!response.ok)throw new Error(data.message||'No se pudo subir el archivo.');return data.file;
 }
 
 const portalOldDocBlob=docBlob;
-docBlob=function(doc){if(doc?.fileId){const xhr=new XMLHttpRequest();xhr.open('GET',doc.url,false);xhr.overrideMimeType('text/plain; charset=x-user-defined');xhr.send();if(xhr.status!==200)throw new Error('No tienes acceso al archivo.');return new Blob([Uint8Array.from(xhr.responseText,c=>c.charCodeAt(0)&255)],{type:doc.type});}return portalOldDocBlob(doc);};
+// Publicaciones institucionales conservadas localmente; no confundirlas con PDF de ejemplo.
+function portalPublishedDoc(doc){return typeof doc?.url==='string'&&/^\/assets\/cbp\/[A-Za-z0-9_-]+\.(pdf|png|jpg|jpeg|webp|docx|xlsx)$/.test(doc.url);}
+docBlob=function(doc){if(doc?.fileId||portalPublishedDoc(doc)){const xhr=new XMLHttpRequest();xhr.open('GET',doc.url,false);xhr.overrideMimeType('text/plain; charset=x-user-defined');xhr.send();if(xhr.status!==200)throw new Error('No se pudo cargar el archivo.');return new Blob([Uint8Array.from(xhr.responseText,c=>c.charCodeAt(0)&255)],{type:doc.type});}return portalOldDocBlob(doc);};
 const portalOldOpenDoc=openDoc;
-openDoc=function(doc){if(doc?.fileId){window.open(doc.url,'_blank','noopener');return;}portalOldOpenDoc(doc);};
+openDoc=function(doc){if(doc?.fileId||portalPublishedDoc(doc)){window.open(doc.url,'_blank','noopener');return;}portalOldOpenDoc(doc);};
 const portalOldDownloadDoc=downloadDoc;
-downloadDoc=function(doc){if(doc?.fileId){const a=document.createElement('a');a.href=doc.url+'&download=1';a.download=doc.original||doc.nombre;a.click();return;}portalOldDownloadDoc(doc);};
+downloadDoc=function(doc){if(doc?.fileId||portalPublishedDoc(doc)){const a=document.createElement('a');a.href=doc.fileId?doc.url+'&download=1':doc.url;a.download=doc.original||doc.nombre;a.click();return;}portalOldDownloadDoc(doc);};
 // Los campos de archivo del módulo académico antes conservaban solo nombre y tamaño.
 document.addEventListener('change',async event=>{
   const input=event.target;if(!input.matches('.ix input[type=file]')||input.dataset.act||input.dataset.id)return;
@@ -144,7 +155,7 @@ document.addEventListener('change',async event=>{
   input._portalUploading=true;
   try{input._portalFiles=await Promise.all(files.map(portalUpload));}catch(error){input._portalFiles=null;input.value='';toast(error.message,'err');}finally{input._portalUploading=false;}
 },true);
-document.addEventListener('submit',event=>{if(event.target.querySelector('input[type=file]')&&[...event.target.querySelectorAll('input[type=file]')].some(i=>i._portalUploading)){event.preventDefault();event.stopImmediatePropagation();toast('Espera a que termine la carga del archivo.','warn');}},true);
+document.addEventListener('submit',event=>{if(EDITOR_UPLOADS.size||[...event.target.querySelectorAll('input[type=file]')].some(i=>i._portalUploading)){event.preventDefault();event.stopImmediatePropagation();toast('Espera a que termine la carga del archivo.','warn');}},true);
 // El horario y los catálogos se generan con los datos del servidor; no se crean cifras ficticias.
 seedVisits=function(){};
 countVisit=function(){};
@@ -152,6 +163,9 @@ let portalLastTracked='';
 function portalTrack(){const path=location.hash||'#/';if(path.startsWith('#/admin')||path===portalLastTracked)return;portalLastTracked=path;
   fetch(portalURL('/api/visitas'),{method:'POST',headers:{'Content-Type':'application/json','X-CSRF-TOKEN':portalBootstrap.csrf},body:JSON.stringify({path})}).catch(()=>{});}
 window.addEventListener('hashchange',portalTrack);
+// Contraseña temporal: antes de usar la intranet se debe cambiar en "Mi cuenta".
+function portalForcePassword(){if(portalBootstrap.user?.cambiarClave&&location.hash.startsWith('#/admin'))location.href='/accounts.php';}
+window.addEventListener('hashchange',portalForcePassword);document.addEventListener('DOMContentLoaded',portalForcePassword);
 document.addEventListener('DOMContentLoaded',()=>{const style=document.createElement('style');style.textContent='.pz-lg-demo,.demo-users{display:none!important}';document.head.append(style);portalTrack();});
 
 // El acceso desde Bolsa laboral usa la misma sesión PHP que el resto de la intranet.
@@ -180,3 +194,26 @@ SPECS.usuarios.afterList=()=>{
   const panel=document.querySelector('#perm-h')?.closest('.panel');
   if(panel)panel.insertAdjacentHTML('afterbegin','<div class="pb"><a class="btn" href="/roles.php">Editar permisos por rol</a><p>Seleccione los módulos habilitados para cada perfil institucional. El administrador conserva acceso completo.</p></div>');
 };
+
+// Visitantes: el servidor envía las imágenes grandes como archivos cacheables (/assets/cache/).
+// Tras la carga se convierten otra vez a data: en memoria, porque jsPDF necesita los datos de la imagen.
+window.addEventListener('load',()=>{
+  if(portalBootstrap.user||typeof DB!=='object'||!DB)return;
+  const pattern=/^\/assets\/cache\/[a-f0-9]{32}\.(png|jpg|webp|gif)$/;const refs=[];const pending=new Map();
+  const walk=node=>{for(const [key,value] of Object.entries(node)){if(typeof value==='string'){if(pattern.test(value))refs.push([node,key,value]);}else if(value&&typeof value==='object')walk(value);}};
+  walk(DB);
+  const toDataURL=url=>fetch(url).then(r=>r.ok?r.blob():Promise.reject(new Error(url))).then(blob=>new Promise((ok,bad)=>{const reader=new FileReader();reader.onload=()=>ok(reader.result);reader.onerror=bad;reader.readAsDataURL(blob);}));
+  for(const [node,key,url] of refs){if(!pending.has(url))pending.set(url,toDataURL(url));pending.get(url).then(data=>{if(node[key]===url)node[key]=data;}).catch(()=>{});}
+});
+
+// Bibliotecas de PDF/QR y de Excel: se cargan después de mostrar la página (antes retrasaban la portada ~1,4 MB).
+// jsPDF y QR se usan también en el portal (cargos, hojas de reclamación); Excel solo en la intranet.
+const portalVendors={pdf:['/assets/vendor/jspdf.umd.min.js','/assets/vendor/jspdf.plugin.autotable.min.js','/assets/vendor/qrcode.min.js'],xlsx:['/assets/vendor/xlsx.full.min.js']};
+const portalVendorLoaded=new Set();
+function portalLoadVendor(group){for(const src of portalVendors[group]){if(portalVendorLoaded.has(src))continue;portalVendorLoaded.add(src);const script=document.createElement('script');script.src=src;script.async=false;document.head.append(script);}}
+// En el portal público, PDF/QR se cargan con la primera interacción del visitante o cuando la página queda en reposo; en la intranet, de inmediato.
+function portalLoadPdfSoon(){const events=['pointerdown','keydown','touchstart','focusin'];const go=()=>{events.forEach(e=>removeEventListener(e,go,true));portalLoadVendor('pdf');};
+ if(location.hash.startsWith('#/admin'))return go();events.forEach(e=>addEventListener(e,go,{capture:true,passive:true}));
+ addEventListener('load',()=>setTimeout(()=>window.requestIdleCallback?requestIdleCallback(go,{timeout:3000}):go(),2500));}
+document.addEventListener('DOMContentLoaded',()=>{portalLoadPdfSoon();if(location.hash.startsWith('#/admin'))portalLoadVendor('xlsx');});
+window.addEventListener('hashchange',()=>{if(location.hash.startsWith('#/admin')){portalLoadVendor('pdf');portalLoadVendor('xlsx');}});

@@ -4,6 +4,10 @@ require dirname(__DIR__).'/portal-private/bootstrap.php';portal_headers();
 $error='';$message='';$restored=false;$app=null;
 try{
     $app=portal_app();$actor=$app->requireAdmin();
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET' && isset($_SESSION['portal_backup_notice'])) {
+        $message = $_SESSION['portal_backup_notice'];
+        unset($_SESSION['portal_backup_notice']);
+    }
     if(isset($_GET['download'])){
         $id=is_string($_GET['download'])?$_GET['download']:'';$path=PortalBackups::path($id);if(!is_file($path))throw new PortalError(404,'Respaldo no encontrado.');
         PortalAudit::write($app,'Descargar respaldo portable','Respaldos',$id);header('Content-Type: application/gzip');header('Content-Disposition: attachment; filename="'.$id.'.piscobak"');header('Content-Length: '.filesize($path));readfile($path);exit;
@@ -24,11 +28,16 @@ try{
             PortalBackups::create($app,'previo-restauracion');$result=PortalBackups::restore($app,$source);$restored=true;
             $message='Restauración completada. Se conservaron los archivos y el historial de auditoría del servidor. Por seguridad se cerraron las sesiones: entra con una cuenta incluida en el respaldo.';
         }else throw new PortalError(422,'Acción no válida.');
+        if (!$restored) {
+            $_SESSION['portal_backup_notice'] = $message;
+            header('Location: /respaldos.php', true, 303);
+            exit;
+        }
     }
     if(!$restored){$schedule=PortalBackups::config($app);$backups=PortalBackups::listing();}
 }catch(Throwable $e){if(!$e instanceof PortalError)portal_error($e);http_response_code($e->status);$error=$e->getMessage();}
 function e(string $v):string{return htmlspecialchars($v,ENT_QUOTES,'UTF-8');}
-?><!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Respaldos | Portal Pisco</title><link rel="stylesheet" href="/forms.css"></head><body><main style="max-width:1050px"><a href="/#/admin/respaldo">Volver a la intranet</a><h1>Respaldos y restauración</h1>
+?><!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Respaldos | Portal CBP</title><link rel="stylesheet" href="/forms.css"></head><body><main style="max-width:1050px"><a href="/#/admin/respaldo">Volver a la intranet</a><h1>Respaldos y restauración</h1>
 <?php if($error):?><p class="notice" role="alert"><?=e($error)?></p><?php endif ?>
 <?php if($message):?><p class="notice success" role="status"><?=e($message)?></p><?php endif ?>
 <?php if($restored):?><p><a href="/#/admin">Iniciar sesión</a></p>

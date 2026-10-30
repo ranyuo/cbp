@@ -18,7 +18,9 @@ final class PortalDomain
             foreach(self::changedRows($old[$key]??[],$new[$key],$key) as $r){
                 $prior=PortalPolicy::find($old[$key]??[],'id',$r['id']??null);
                 if($r['deleted']??false)continue;
-                foreach($spec['fields'] as $f){$v=$r[$f['name']]??null;$empty=$v===null||$v===''||$v===[];
+                foreach($spec['fields'] as $f){$v=$r[$f['name']]??null;
+                    if($key==='documentos'&&$f['name']==='archivo'&&($r['refModulo']??'')==='admision')$v=$r['archivoRef']??null;
+                    $empty=$v===null||$v===''||$v===[];
                     if(($f['required']||($f['publishRequired']&&in_array($r['estado']??'',['Publicado','Publicada','En revisión'],true)))&&$empty&&(!$prior||!empty($prior[$f['name']])))throw new PortalError(422,$key.': completa '.$f['name'].'.');
                     if($empty)continue;
                     if($f['unique'])foreach($new[$key] as $other)if(!($other['deleted']??false)&&($other['id']??null)!==($r['id']??null)&&isset($other[$f['name']])&&strtolower(trim((string)$other[$f['name']]))===strtolower(trim((string)$v)))throw new PortalError(422,'Valor duplicado en '.$key.'.'.$f['name'].'.');
@@ -26,7 +28,7 @@ final class PortalDomain
                     if($f['type']==='datetime-local'&&(!is_string($v)||strtotime($v)===false))throw new PortalError(422,'Fecha y hora no válida.');
                     if($f['type']==='image'&&(!$prior||!PortalPolicy::equal($v,$prior[$f['name']]??null))&&!PortalRules::safeImage($v))throw new PortalError(422,'La imagen o su URL no es válida.');
                     if($f['type']==='email'&&(!is_string($v)||!filter_var($v,FILTER_VALIDATE_EMAIL)))throw new PortalError(422,'Correo no válido.');
-                    if($f['type']==='url'&&(!is_string($v)||!preg_match('#^https?://#',$v)))throw new PortalError(422,'URL no válida.');
+                    if($f['type']==='url'&&!PortalRules::safeLink($v,false))throw new PortalError(422,'URL no válida.');
                     if($f['type']==='number'&&(!is_numeric($v)||(isset($f['min'])&&$v<$f['min'])))throw new PortalError(422,'Número no válido en '.$f['name'].'.');
                     if(isset($f['max'])&&is_string($v)&&preg_match_all('/./us',$v)>$f['max'])throw new PortalError(422,'Texto demasiado largo en '.$f['name'].'.');
                 }
@@ -37,10 +39,13 @@ final class PortalDomain
         foreach($new['programas'] as $program){$academicId=$new['academico']['progMap'][$program['id']]??null;if($academicId!==null)foreach($new['academico']['programas'] as &$academic)if($academic['id']===$academicId){$academic['nombre']=$program['nombre'];$academic['activo']=($program['estado']??'')==='Publicado';$academic['pid']=$program['id'];}unset($academic);}
         foreach(self::changedRows($old['becarios']??[],$new['becarios']??[],'becarios') as $r){
             if($r['deleted']??false)continue;
-            if(!preg_match('/^[0-9]{8}$/',(string)($r['dni']??'')))throw new PortalError(422,'El DNI del beneficiario debe tener ocho dígitos.');
+            if(!empty($r['dni'])&&!preg_match('/^[0-9]{8}$/',(string)$r['dni']))throw new PortalError(422,'El DNI del beneficiario debe tener ocho dígitos.');
             $period=self::foreign($new['becasPeriodos'],$r['periodoId']??null,'Periodo de becas');self::foreign($new['programas'],$r['programaId']??null,'Programa');self::foreign($new['tiposBeca'],$r['tipoId']??null,'Tipo de beca');
             if(($period['estado']??'')==='Cerrado'&&PortalPolicy::role($user)!=='admin')throw new PortalError(403,'El periodo de becas está cerrado.');
-            foreach($new['becarios'] as $other)if(!($other['deleted']??false)&&$other['id']!==$r['id']&&($other['dni']??'')===$r['dni']&&$other['periodoId']===$r['periodoId']&&$other['programaId']===$r['programaId']&&$other['tipoId']===$r['tipoId'])throw new PortalError(422,'Beneficiario duplicado en ese periodo, programa y tipo de beca.');
+            foreach($new['becarios'] as $other){
+                $samePerson=!empty($r['dni'])?($other['dni']??'')===$r['dni']:PortalRules::normal(($other['nombres']??'').' '.($other['apellidos']??''))===PortalRules::normal(($r['nombres']??'').' '.($r['apellidos']??''));
+                if(!($other['deleted']??false)&&$other['id']!==$r['id']&&$samePerson&&$other['periodoId']===$r['periodoId']&&$other['programaId']===$r['programaId']&&$other['tipoId']===$r['tipoId'])throw new PortalError(422,'Beneficiario duplicado en ese periodo, programa y tipo de beca.');
+            }
         }
         $a=&$new['academico'];$o=$old['academico'];
         foreach(self::changedRows($o['estudiantes'],$a['estudiantes'],'academico.estudiantes') as $r){
