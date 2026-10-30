@@ -19,8 +19,8 @@ try {
 }
 function e(string $value): string { return htmlspecialchars($value, ENT_QUOTES, 'UTF-8'); }
 ?><!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Instalar portal Pisco</title><link rel="stylesheet" href="/forms.css"></head>
-<body><main><h1>Instalar portal Pisco</h1>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Instalar portal CBP</title><link rel="stylesheet" href="/forms.css"></head>
+<body><main><h1>Instalar portal CBP</h1>
 <?php if ($closed): ?>
 <section><p>El portal ya está instalado. El instalador quedó bloqueado.</p><a href="/">Ir al portal</a></section>
 <?php elseif ($success): ?>
@@ -32,7 +32,7 @@ function e(string $value): string { return htmlspecialchars($value, ENT_QUOTES, 
 <input type="hidden" name="_csrf" value="<?= e($_SESSION['csrf'] ?? '') ?>">
 <label>Clave privada de instalación<input type="password" name="install_key" required minlength="32" autocomplete="off"></label>
 <label>Tu nombre<input name="name" required maxlength="150" autocomplete="name"></label>
-<label>Usuario de administrador<input name="username" required pattern="[a-zA-Z0-9._-]{3,80}" maxlength="80" autocomplete="username"></label>
+<label>Usuario de administrador<input name="username" required pattern="[a-zA-Z0-9._\-]{3,80}" maxlength="80" autocomplete="username"></label>
 <label>Correo del administrador<input type="email" name="email" required maxlength="254" autocomplete="email"></label>
 <label>Contraseña nueva (12 a 72 caracteres)<input type="password" name="password" required minlength="12" maxlength="72" autocomplete="new-password"></label>
 <label>Repetir contraseña<input type="password" name="password_confirmation" required minlength="12" maxlength="72" autocomplete="new-password"></label>
